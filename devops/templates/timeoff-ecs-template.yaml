@@ -340,11 +340,11 @@ Resources:
 # Route 53 - Associate domain to ALB
 ####################################
 
-  myDNS:
+  TimeOffSolutionDNS:
     Type: AWS::Route53::RecordSetGroup
     Properties:
       HostedZoneName: timeoff-solution.com.
-      Comment: Zone apex alias targeted to myELB LoadBalance
+      Comment: Alias targeted to myELB LoadBalancer
       RecordSets:
       - Name: manuel.timeoff-solution.com.
         Type: A
