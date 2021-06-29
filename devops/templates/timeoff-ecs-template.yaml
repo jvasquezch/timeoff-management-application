@@ -57,6 +57,9 @@ Parameters:
   MyIP: 
     Type: String
     Default: "186.177.59.78/32"
+  AppUrl:
+    Type: String
+    Default: "demo.timeoff-solution.com."
 
 Resources:
 
@@ -356,7 +359,7 @@ Resources:
       HostedZoneName: timeoff-solution.com.
       Comment: Alias targeted to myELB LoadBalancer
       RecordSets:
-      - Name: manuel.timeoff-solution.com.
+      - Name: !Ref "AppUrl"
         Type: A
         AliasTarget:
           HostedZoneId: !GetAtt "ApplicationLoadBalancer.CanonicalHostedZoneID"
