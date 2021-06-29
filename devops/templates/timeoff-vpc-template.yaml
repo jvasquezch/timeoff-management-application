@@ -1,0 +1,238 @@
+################################
+# Author : Juan Manuel Vasquez 
+# Defining VPC Parameters      
+################################
+
+#########################
+# Define Parameters     
+#########################
+
+Parameters:
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.10.0.0/16
+
+  TimeOffPublicSubnetACIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    Type: String
+    Default: 10.10.10.0/24
+
+  TimeOffPublicSubnetBCIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    Type: String
+    Default: 10.10.11.0/24
+
+  TimeOffPrivateSubnetACIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+    Type: String
+    Default: 10.10.20.0/24
+
+  TimeOffPrivateSubnetBCIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+    Type: String
+    Default: 10.10.21.0/24
+
+  AWSRegion:
+    Description: AWS Region
+    Type: String
+    Default: us-east-1
+
+Resources:
+
+#########################
+# VPC             
+#########################
+  
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value:  !Join ['', [!Ref "AWS::StackName", "-VPC"]]
+
+#########################################################
+# Internet Gateway: Internet access
+# NAT Gateway: Allow private network to access Internet
+#########################################################
+ 
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: VPC
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-igw   
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  ElasticIPAddress:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: VPC
+      Tags:
+      - Key: Name
+        Value: !Sub IP-${AWS::StackName}
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIPAddress.AllocationId
+      SubnetId: !Ref TimeOffPublicSubnetA
+      Tags:
+      - Key: Name
+        Value: !Sub NAT-${AWS::StackName}
+
+##########################
+# Subnets Creation          
+##########################
+
+  TimeOffPublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref TimeOffPublicSubnetACIDR
+      AvailabilityZone: !Select [ 0, !GetAZs '']    # Get the first AZ in the list       
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-PublicSubnet-A
+
+  TimeOffPublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref TimeOffPublicSubnetBCIDR
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]    # Get the second AZ in the list 
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-PublicSubnet-B
+
+  TimeOffPrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref TimeOffPrivateSubnetACIDR
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]    # Get the first AZ in the list 
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-PrivateSubnet-A
+        
+  TimeOffPrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref TimeOffPrivateSubnetBCIDR
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]    # Get the second AZ in the list 
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-PrivateSubnet-B
+
+#######################################
+# Routing Tables and Route Association        
+#######################################
+
+# PUBLIC
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-Public
+
+  DefaultPublicRoute: 
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway  
+  
+  TimeOffPublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TimeOffPublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+  
+  TimeOffPublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TimeOffPublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+# PRIVATE
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-Private
+
+  DefaultPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  TimeOffPrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TimeOffPrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+  
+  TimeOffPrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TimeOffPrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  NoIngressSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "no-ingress-sg"
+      GroupDescription: "Security group with no ingress rule"
+      VpcId: !Ref VPC
+
+
+###########################################################
+# Export ouputs which are going to be used in other stacks        
+###########################################################
+
+Outputs:
+  VPCId:
+    Description: The ID of the VPC that this stack is deployed in
+    Value: !Ref 'VPC'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'VPCId' ] ]
+  TimeOffPublicSubnetA:
+    Description: TimeOff Public subnet A
+    Value: !Ref 'TimeOffPublicSubnetA'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'TimeOffPublicSubnetA' ] ]
+  TimeOffPublicSubnetB:
+    Description: TimeOff Public subnet B
+    Value: !Ref 'TimeOffPublicSubnetB'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'TimeOffPublicSubnetB' ] ]
+  TimeOffPrivateSubnetA:
+    Description: TimeOff Private subnet A
+    Value: !Ref 'TimeOffPrivateSubnetA'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'TimeOffPrivateSubnetA' ] ]
+  TimeOffPrivateSubnetB:
+    Description: TimeOff Private subnet B
+    Value: !Ref 'TimeOffPrivateSubnetB'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'TimeOffPrivateSubnetB' ] ]
