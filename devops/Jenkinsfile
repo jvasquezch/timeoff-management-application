@@ -1,0 +1,81 @@
+pipeline{
+    agent any
+    environment {
+        AWS_REGION = "us-east-1"
+        ECR_REPO = '941678037348.dkr.ecr.us-east-1.amazonaws.com'
+        ECR_NAME = 'timeoff-repository'
+        IMAGE_NAME = 'timeoffsolution'
+        IMAGE_TAG = 'latest'
+        ECS_CLUSTER_NAME = 'timeoff-ecs-cluster'
+        ECS_SERVICE_NAME = 'timeoff-ecs-service'
+    }
+    stages{
+        stage("Deploy ECR Repo"){
+            steps{
+                script{        
+                    def status = sh(returnStatus: true, script: "aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE --query 'StackSummaries[].StackName[]' --output text | grep -o 'timeoff-ecr'")
+                    if (status != 0) {
+                        echo "***************************************************************"
+                        echo "*       PROVISIONING AWS ECR USING CLOUDFORMATION TEMPLATE     *"
+                        echo "***************************************************************"
+                        sh """
+                        cd ${env.WORKSPACE}/devops/templates/
+                        aws cloudformation create-stack --stack-name timeoff-ecr --template-body file://timeoff-ecr-template.yaml --region ${AWS_REGION}
+                        """
+                    }else {
+                        sh """
+                        echo '** SKIPING ECR PROVISIONING - REASON: ECR stack already Exist'
+                        echo '** SKIPING REASON: ECR stack already Exist'
+                        """ 
+                    }
+                }
+            }
+        }
+        stage("Build Image"){
+            steps{
+                echo "*********************************"
+                echo "*     BUILDING DOCKER IMAGE     *"
+                echo "*********************************"
+                sh """
+                sudo docker system prune -af
+                sudo docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                sudo docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REPO}/${ECR_NAME}:${IMAGE_TAG}
+                """
+            }
+        }
+        stage("Push Docker Image"){
+            steps{
+                echo "********************************************"
+                echo "*  PUSHING DOCKER IMAGE TO ECR REPOSITORY  *"
+                echo "********************************************"
+                sh """
+                aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${ECR_REPO}
+                sudo docker push ${ECR_REPO}/${ECR_NAME}:${IMAGE_TAG}
+                """
+            }
+        }
+        stage("Deploy ECS Service"){
+            steps{
+                script{        
+                    def status = sh(returnStatus: true, script: "aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE --query 'StackSummaries[].StackName[]' --output text | grep -o 'timeoff-ecs'")
+                    if (status != 0) {
+                        echo "**************************"
+                        echo "* DEPLOYING ECS SEVRICE  *"
+                        echo "**************************"
+                        sh """
+                        cd ${env.WORKSPACE}/devops/templates/
+                        aws cloudformation create-stack --stack-name timeoff-ecs --template-body file://timeoff-ecs-template.yaml --region ${AWS_REGION} --capabilities CAPABILITY_IAM
+                        """
+                    }else {
+                        echo "*******************************************************************************************************************************************"
+                        echo "* ECS SERVICE ALREADY EXIST !!! ECS SERVICE IS GOING TO PERFORM A ROLLING UPDATE BASED ON THE ECS DesiredCount AND MinimumHealthyPercent  *"
+                        echo "*******************************************************************************************************************************************"
+                        sh """
+                        aws ecs update-service --cluster ${ECS_CLUSTER_NAME} --service ${ECS_SERVICE_NAME} --force-new-deployment
+                        """
+                        }
+                    }
+                }
+            }
+        }
+    }
