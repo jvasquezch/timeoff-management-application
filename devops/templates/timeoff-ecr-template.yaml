@@ -1,0 +1,26 @@
+###########################
+# ECR Repository Creation #
+###########################
+
+# Defining parameters
+Parameters:
+  EcrName:
+    Description: ECR Repository Name
+    Type: String
+    Default: timeoff-repository
+
+Resources:
+  TimeOffECR: 
+    Type: AWS::ECR::Repository
+    Properties: 
+      RepositoryName: !Ref "EcrName"
+      ImageScanningConfiguration: 
+        ScanOnPush: "true"
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}
+
+# Defining output
+Outputs:    
+  Arn:
+    Value: !GetAtt TimeOffECR.Arn
