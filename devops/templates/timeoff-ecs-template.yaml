@@ -8,6 +8,10 @@
 # Defining ECS Parameters     
 #########################
 Parameters:
+  StackName:
+    Type: String
+    Description: vpc stack name
+    Default: "timeoff"
   ClusterName:
     Type: String
     Description: ECS Cluster name
@@ -50,6 +54,9 @@ Parameters:
     Type: Number
     Default: 4
     Description: How many copies of the service task to run.
+  MyIP: 
+    Type: String
+    Default: "186.177.59.78/32"
 
 Resources:
 
@@ -62,15 +69,18 @@ Resources:
     Properties:
       GroupDescription: Allowing HTTP and HTTPS 
       SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 443
-        ToPort: 443
-        CidrIp: 0.0.0.0/0
-      SecurityGroupEgress:
-      - IpProtocol: tcp
-        FromPort: 80
-        ToPort: 80
-        CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref "MyIP"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref "MyIP"
+      VpcId:
+        Fn::ImportValue:
+          !Join [':', [!Ref 'StackName', 'VPCId']]
+      
 
   ApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
